@@ -9,11 +9,11 @@ var fs = require('fs'),
     path = require('path'),
     qs = require('qs'),
     should = require('should'),
-    utile = require('utile'),
+    util = require('util'),
     async = require('async'),
     helpers = require('../../helpers'),
+    http = require('http'),
     hock = require('hock'),
-    async = require('async'),
     _ = require('underscore'),
     providers = require('../../configs/providers.json'),
     Network = require('../../../lib/pkgcloud/core/network/network').Network,
@@ -27,7 +27,8 @@ providers.filter(function (provider) {
 
     var client = helpers.createClient(provider, 'network'),
       context = {},
-      authServer, server;
+      authServer, server,
+      authHockInstance, hockInstance;
 
     before(function (done) {
 
@@ -35,31 +36,28 @@ providers.filter(function (provider) {
         return done();
       }
 
+      hockInstance = hock.createHock({ throwOnUnmatched: false });
+      authHockInstance = hock.createHock();
+
+      server = http.createServer(hockInstance.handler);
+      authServer = http.createServer(authHockInstance.handler);
+
       async.parallel([
         function (next) {
-          hock.createHock({
-            port: 12345,
-            throwOnUnmatched: false
-          }, function (err, hockClient) {
-            server = hockClient;
-            next();
-          });
+          server.listen(12345, next);
         },
         function (next) {
-          hock.createHock(12346, function (err, hockClient) {
-            authServer = hockClient;
-            next();
-          });
+          authServer.listen(12346, next);
         }
-      ], done);
+      ], done)
     });
 
     it('the getNetworks() function should return a list of networks', function(done) {
 
       if (mock) {
         setupNetworksMock(client, provider, {
-          authServer: authServer,
-          server: server
+          authServer: authHockInstance,
+          server: hockInstance
         });
       }
 
@@ -69,8 +67,8 @@ providers.filter(function (provider) {
 
         context.networks = networks;
 
-        authServer && authServer.done();
-        server && server.done();
+        authHockInstance && authHockInstance.done();
+        hockInstance && hockInstance.done();
 
         done();
       });
@@ -79,8 +77,8 @@ providers.filter(function (provider) {
     it('the getNetwork() method should get a network instance', function (done) {
       if (mock) {
         setupGetNetworkMock(client, provider, {
-          authServer: authServer,
-          server: server
+          authServer: authHockInstance,
+          server: hockInstance
         });
       }
 
@@ -91,8 +89,8 @@ providers.filter(function (provider) {
         network.should.have.property('id', context.networks[0].id);
         context.currentNetwork = network;
 
-        authServer && authServer.done();
-        server && server.done();
+        authHockInstance && authHockInstance.done();
+        hockInstance && hockInstance.done();
         done();
 
       });
@@ -103,18 +101,18 @@ providers.filter(function (provider) {
 
       if (mock) {
         setupNetworkMock(client, provider, {
-          authServer: authServer,
-          server: server
+          authServer: authHockInstance,
+          server: hockInstance
         });
       }
 
-      client.createNetwork(utile.mixin({
+      client.createNetwork(_.extend({
         name: 'create-test-ids2'
       }), function (err, network) {
         should.not.exist(err);
         should.exist(network);
-        authServer && authServer.done();
-        server && server.done();
+        authHockInstance && authHockInstance.done();
+        hockInstance && hockInstance.done();
         done();
       });
     });
@@ -122,8 +120,8 @@ providers.filter(function (provider) {
     it('the destroyNetwork() method should delete a network', function (done) {
       if (mock) {
         setupDestroyNetworkMock(client, provider, {
-          authServer: authServer,
-          server: server
+          authServer: authHockInstance,
+          server: hockInstance
         }, context.currentNetwork);
       }
 
@@ -136,8 +134,8 @@ providers.filter(function (provider) {
     it('the destroyNetwork() method should take an id, delete a network', function (done) {
       if (mock) {
         setupDestroyNetworkMock(client, provider, {
-          authServer: authServer,
-          server: server
+          authServer: authHockInstance,
+          server: hockInstance
         }, context.currentNetwork);
       }
 
@@ -154,8 +152,8 @@ providers.filter(function (provider) {
 
       if (mock) {
         setupUpdateNetworkMock(client, provider, {
-          authServer: authServer,
-          server: server
+          authServer: authHockInstance,
+          server: hockInstance
         }, networkToUpdate);
       }
 
@@ -170,8 +168,8 @@ providers.filter(function (provider) {
 
       if (mock) {
         setupNetworkModelCreateMock(client, provider, {
-          authServer: authServer,
-          server: server
+          authServer: authHockInstance,
+          server: hockInstance
         });
       }
 
@@ -180,8 +178,8 @@ providers.filter(function (provider) {
       network.create(function (err, createdNetwork) {
         should.not.exist(err);
         should.exist(createdNetwork);
-        authServer && authServer.done();
-        server && server.done();
+        authHockInstance && authHockInstance.done();
+        hockInstance && hockInstance.done();
         done();
       });
     });
@@ -194,8 +192,8 @@ providers.filter(function (provider) {
 
       if (mock) {
         setupRefreshNetworkMock(client, provider, {
-          authServer: authServer,
-          server: server
+          authServer: authHockInstance,
+          server: hockInstance
         }, network);
       }
 
@@ -203,8 +201,8 @@ providers.filter(function (provider) {
         should.not.exist(err);
         should.exist(refreshedNetwork);
         refreshedNetwork.should.have.property('name', 'private-network');
-        authServer && authServer.done();
-        server && server.done();
+        authHockInstance && authHockInstance.done();
+        hockInstance && hockInstance.done();
         done();
       });
     });
@@ -216,8 +214,8 @@ providers.filter(function (provider) {
 
       if (mock) {
         setupModelDestroyedNetworkMock(client, provider, {
-          authServer: authServer,
-          server: server
+          authServer: authHockInstance,
+          server: hockInstance
         }, network);
       }
 
@@ -234,10 +232,10 @@ providers.filter(function (provider) {
 
       async.parallel([
         function (next) {
-          authServer.close(next);
+          server.close(next);
         },
         function (next) {
-          server.close(next);
+          authServer.close(next);
         }
       ], done);
     });

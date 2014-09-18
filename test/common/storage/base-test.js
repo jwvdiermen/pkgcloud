@@ -11,9 +11,10 @@ var fs = require('fs'),
     assert = require('../../helpers/assert'),
     helpers = require('../../helpers'),
     should = require('should'),
-    utile = require('utile'),
+    util = require('util'),
     async = require('async'),
     hock = require('hock'),
+    http = require('http'),
     urlJoin = require('url-join'),
     _ = require('underscore'),
     providers = require('../../configs/providers.json'),
@@ -30,8 +31,9 @@ providers.filter(function (provider) {
   describe('pkgcloud/common/storage/base [' + provider + ']', function () {
 
     var client = helpers.createClient(provider, 'storage'),
-        context = {},
-        authServer, server;
+      context = {},
+      authServer, server,
+      authHockInstance, hockInstance;
 
     before(function (done) {
 
@@ -39,20 +41,20 @@ providers.filter(function (provider) {
         return done();
       }
 
+      hockInstance = hock.createHock({ throwOnUnmatched: false });
+      authHockInstance = hock.createHock();
+
+      server = http.createServer(hockInstance.handler);
+      authServer = http.createServer(authHockInstance.handler);
+
       async.parallel([
         function (next) {
-          hock.createHock(12345, function (err, hockClient) {
-            server = hockClient;
-            next();
-          });
+          server.listen(12345, next);
         },
         function (next) {
-          hock.createHock(12346, function (err, hockClient) {
-            authServer = hockClient;
-            next();
-          });
+          authServer.listen(12346, next);
         }
-      ], done)
+      ], done);
     });
 
     it('the createContainer() method should return newly created container', function(done) {
@@ -64,8 +66,8 @@ providers.filter(function (provider) {
         }
 
         setupCreateContainerMock(provider, client, {
-          server: server,
-          authServer: authServer
+          server: hockInstance,
+          authServer: authHockInstance
         });
       }
 
@@ -76,8 +78,8 @@ providers.filter(function (provider) {
 
         context.container = container;
 
-        authServer && authServer.done();
-        server && server.done();
+        authHockInstance && authHockInstance.done();
+        hockInstance && hockInstance.done();
         done();
 
       });
@@ -92,22 +94,22 @@ providers.filter(function (provider) {
         }
 
         setupGetContainersMock(provider, client, {
-          server: server,
-          authServer: authServer
+          server: hockInstance,
+          authServer: authHockInstance
         });
       }
 
       client.getContainers(function (err, containers) {
         should.not.exist(err);
         should.exist(containers);
-        containers.should.be.instanceOf(Array);
+        containers.should.be.an.Array;
 
         containers.forEach(function(container) {
           container.should.be.instanceOf(Container);
         });
 
         // TODO Name check
-        server && server.done();
+        hockInstance && hockInstance.done();
         done();
 
       });
@@ -122,8 +124,8 @@ providers.filter(function (provider) {
         }
 
         setupUploadStreamMock(provider, client, {
-          server: server,
-          authServer: authServer
+          server: hockInstance,
+          authServer: authHockInstance
         });
       }
 
@@ -144,7 +146,7 @@ providers.filter(function (provider) {
         should.exist(response.statusCode);
         should.exist(response.headers);
 
-        server && server.done();
+        hockInstance && hockInstance.done();
         done();
       });
 
@@ -161,8 +163,8 @@ providers.filter(function (provider) {
         }
 
         setupDownloadStreamMock(provider, client, {
-          server: server,
-          authServer: authServer
+          server: hockInstance,
+          authServer: authHockInstance
         });
       }
 
@@ -177,7 +179,7 @@ providers.filter(function (provider) {
         context.fileContents.should.equal(fillerama);
         file.size.should.equal(Buffer.byteLength(context.fileContents));
 
-        server && server.done();
+        hockInstance && hockInstance.done();
         done();
       });
 
@@ -197,8 +199,8 @@ providers.filter(function (provider) {
         }
 
         setupDownloadStreamMock(provider, client, {
-          server: server,
-          authServer: authServer
+          server: hockInstance,
+          authServer: authHockInstance
         });
       }
 
@@ -213,7 +215,7 @@ providers.filter(function (provider) {
         context.fileContents.should.equal(fillerama);
         file.size.should.equal(Buffer.byteLength(context.fileContents));
 
-        server && server.done();
+        hockInstance && hockInstance.done();
         done();
       });
 
@@ -233,8 +235,8 @@ providers.filter(function (provider) {
         }
 
         setupGetFileMock(provider, client, {
-          server: server,
-          authServer: authServer
+          server: hockInstance,
+          authServer: authHockInstance
         });
       }
 
@@ -245,7 +247,7 @@ providers.filter(function (provider) {
           file.name.should.equal(context.file.name);
           file.size.should.equal(context.file.size);
 
-          server && server.done();
+          hockInstance && hockInstance.done();
           done();
         });
     });
@@ -259,8 +261,8 @@ providers.filter(function (provider) {
         }
 
         setupGetFilesMock(provider, client, {
-          server: server,
-          authServer: authServer
+          server: hockInstance,
+          authServer: authHockInstance
         });
       }
 
@@ -268,7 +270,7 @@ providers.filter(function (provider) {
         should.not.exist(err);
         should.exist(files);
 
-        files.should.be.instanceOf(Array);
+        files.should.be.an.Array;
 
         files.forEach(function(file) {
           file.should.be.instanceOf(File);
@@ -276,7 +278,7 @@ providers.filter(function (provider) {
 
         // TODO look for context.file in array
 
-        server && server.done();
+        hockInstance && hockInstance.done();
         done();
       });
     });
@@ -290,8 +292,8 @@ providers.filter(function (provider) {
         }
 
         setupRemoveFileMock(provider, client, {
-          server: server,
-          authServer: authServer
+          server: hockInstance,
+          authServer: authHockInstance
         });
       }
 
@@ -299,7 +301,7 @@ providers.filter(function (provider) {
         should.not.exist(err);
         should.exist(ok);
 
-        server && server.done();
+        hockInstance && hockInstance.done();
         done();
       });
     });
@@ -379,8 +381,8 @@ providers.filter(function (provider) {
         }
 
         setupDestroyContainerMock(provider, client, {
-          server: server,
-          authServer: authServer
+          server: hockInstance,
+          authServer: authHockInstance
         });
       }
 
@@ -388,7 +390,7 @@ providers.filter(function (provider) {
         should.not.exist(err);
         should.exist(ok);
 
-        server && server.done();
+        hockInstance && hockInstance.done();
         done();
       });
     });
@@ -402,8 +404,8 @@ providers.filter(function (provider) {
         }
 
         setupGetContainers2Mock(provider, client, {
-          server: server,
-          authServer: authServer
+          server: hockInstance,
+          authServer: authHockInstance
         });
       }
 
@@ -411,7 +413,7 @@ providers.filter(function (provider) {
         should.not.exist(err);
         should.exist(ok);
 
-        server && server.done();
+        hockInstance && hockInstance.done();
         done();
       });
     });
@@ -423,10 +425,10 @@ providers.filter(function (provider) {
 
       async.parallel([
         function (next) {
-          authServer.close(next);
+          server.close(next);
         },
         function (next) {
-          server.close(next);
+          authServer.close(next);
         }
       ], done)
     });
@@ -460,9 +462,9 @@ providers.filter(function (provider) {
             password: 'MOCK-PASSWORD'
           }
         }
-      }, {'User-Agent': utile.format('nodejs-pkgcloud/%s', pkgcloud.version)})
+      }, {'User-Agent': util.format('nodejs-pkgcloud/%s', pkgcloud.version)})
       .reply(200, helpers._getOpenstackStandardResponse('../fixtures/openstack/initialToken.json'))
-      .get('/v2.0/tenants', {'User-Agent': utile.format('nodejs-pkgcloud/%s', pkgcloud.version)})
+      .get('/v2.0/tenants', {'User-Agent': util.format('nodejs-pkgcloud/%s', pkgcloud.version)})
       .replyWithFile(200, __dirname + '/../../fixtures/openstack/tenantId.json')
       .post('/v2.0/tokens', {
         auth: {
@@ -472,7 +474,7 @@ providers.filter(function (provider) {
           },
           tenantId: '72e90ecb69c44d0296072ea39e537041'
         }
-      }, {'User-Agent': utile.format('nodejs-pkgcloud/%s', pkgcloud.version)})
+      }, {'User-Agent': util.format('nodejs-pkgcloud/%s', pkgcloud.version)})
       .reply(200, helpers.getOpenstackAuthResponse());
 
     servers.server
@@ -521,9 +523,9 @@ providers.filter(function (provider) {
             secretKey: 'MOCK-API-KEY'
           }
         }
-      }, {'User-Agent': utile.format('nodejs-pkgcloud/%s', pkgcloud.version)})
+      }, {'User-Agent': util.format('nodejs-pkgcloud/%s', pkgcloud.version)})
       .reply(200, helpers._getOpenstackStandardResponse('../fixtures/hp/initialToken.json'))
-      .get('/v2.0/tenants', {'User-Agent': utile.format('nodejs-pkgcloud/%s', pkgcloud.version)})
+      .get('/v2.0/tenants', {'User-Agent': util.format('nodejs-pkgcloud/%s', pkgcloud.version)})
       .replyWithFile(200, __dirname + '/../../fixtures/hp/tenantId.json')
       .post('/v2.0/tokens', {
         auth: {
@@ -533,7 +535,7 @@ providers.filter(function (provider) {
           },
           tenantId: '5ACED3DC3AA740ABAA41711243CC6949'
         }
-      }, {'User-Agent': utile.format('nodejs-pkgcloud/%s', pkgcloud.version)})
+      }, {'User-Agent': util.format('nodejs-pkgcloud/%s', pkgcloud.version)})
       .reply(200, helpers.gethpAuthResponse());
 
     servers.server
